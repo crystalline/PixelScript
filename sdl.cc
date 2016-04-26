@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     float t = 0;
     uint32_t beforeT, afterT;
 
-    while (1) {
+    while (!quit) {
 
         beforeT = SDL_GetTicks();
         
@@ -102,8 +102,6 @@ int main(int argc, char *argv[]) {
                 handleKeyUp(&e.key);
             }
         }
-        
-        if (quit) break;
         
         if (!pause) {
 
