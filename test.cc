@@ -93,17 +93,15 @@ bool CheckFnExists(Isolate* isolate, const char* fnName) {
     
     Local<Context> context(isolate->GetCurrentContext());
 
-    // The script compiled and ran correctly.  Now we fetch out the
-    // Process function from the global object.
+    // fetch out the fnName function from the global object.
     Local<String> process_name =
         String::NewFromUtf8(isolate, fnName, NewStringType::kNormal)
         .ToLocalChecked();
     
     Local<Value> process_val;
     
-    // If there is no Process function, or if it is not a function,
-    // bail out
-    return context->Global()->Get(context, process_name).ToLocal(&process_val) || !process_val->IsFunction();
+    // If there is no function, or if it is not a function
+    return context->Global()->Get(context, process_name).ToLocal(&process_val) && process_val->IsFunction();
 }
 
 Local<Function> GetFn(Isolate* isolate, const char* fnName) {
