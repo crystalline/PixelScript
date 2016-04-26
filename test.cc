@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//bin2c -st -c -t char -n v8_natives_blob natives_blob.bin > natives_blob.cc
+//bin2c -st -c -t char -n v8_snapshot_blob snapshot_blob.bin > snapshot_blob.cc
+
 //g++ -std=c++11 -I"v8/include" test.cc -o test -Wl,--start-group \
 v8/out/x64.release/obj.target/{tools/gyp/libv8_{base,libbase,external_snapshot,libplatform},third_party/icu/libicu{uc,i18n,data}}.a -Wl,--end-group \
 -lrt -ldl -pthread
@@ -13,6 +16,13 @@ v8/out/x64.release/obj.target/{tools/gyp/libv8_{base,libbase,external_snapshot,l
 
 #include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8.h"
+
+#define COMPILE_BLOBS 1
+
+#ifdef COMPILE_BLOBS
+#include "natives_blob.cc"
+#include "snapshot_blob.cc"
+#endif
 
 using namespace v8;
 
@@ -30,7 +40,7 @@ void Log(const char* event) {
     printf("LOG: %s\n", event);
 }
 
-static void LogCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
+static void LogCallback(const FunctionCallbackInfo<v8::Value>& args) {
     if (args.Length() < 1) return;
     HandleScope scope(args.GetIsolate());
     Local<Value> arg = args[0];
@@ -115,7 +125,6 @@ Local<Function> GetFn(Isolate* isolate, const char* fnName) {
     // If there is no Process function, or if it is not a function,
     // bail out
     bool OK = context->Global()->Get(context, process_name).ToLocal(&process_val);
-    
     Local<Function> process_fun = Local<Function>::Cast(process_val);
     
     return handle_scope.Escape(process_fun);
@@ -127,7 +136,6 @@ double GetNumber(Isolate* isolate, const char* globName, double defaultValue) {
     Local<String> name = String::NewFromUtf8(isolate, globName, NewStringType::kNormal).ToLocalChecked();
     
     Local<Value> val;
-    
     bool OK = context->Global()->Get(context, name).ToLocal(&val) && val->IsNumber();
     
     if (OK) {
@@ -153,6 +161,21 @@ const char* GetString(Isolate* isolate, const char* globName, const char* defaul
     }
 }
 
+bool GetBoolean(Isolate* isolate, const char* globName) {
+    Local<Context> context(isolate->GetCurrentContext());
+    EscapableHandleScope handle_scope(isolate);
+    Local<String> name = String::NewFromUtf8(isolate, globName, NewStringType::kNormal).ToLocalChecked();
+    
+    Local<Value> val;
+    bool OK = context->Global()->Get(context, name).ToLocal(&val);
+    
+    if (OK) {
+        return val->BooleanValue();
+    } else {
+        return false;
+    }
+}
+
 void makeGlobalByteArray(Isolate* isolate, const char* globName, size_t size, void* data) {
     Local<Context> context(isolate->GetCurrentContext());
     EscapableHandleScope handle_scope(isolate);
@@ -162,12 +185,23 @@ void makeGlobalByteArray(Isolate* isolate, const char* globName, size_t size, vo
     Maybe<bool> OK = context->Global()->Set(context, name, jsbuffer);
 }
 
-static Local<Uint8Array> New(Local<ArrayBuffer> array_buffer, size_t byte_offset, size_t length);
-
 int main(int argc, char* argv[]) {
     // Initialize V8.
     V8::InitializeICU();
+    
+#ifdef COMPILE_BLOBS
+    static StartupData natives;
+    natives.data = (const char*) v8_natives_blob;
+    natives.raw_size = sizeof(v8_natives_blob);
+    static StartupData snapshot;
+    snapshot.data = (const char*) v8_snapshot_blob;
+    snapshot.raw_size = sizeof(v8_snapshot_blob);
+    V8::SetNativesDataBlob(&natives);
+    V8::SetSnapshotDataBlob(&snapshot);
+#else
     V8::InitializeExternalStartupData(argv[0]);
+#endif
+    
     Platform* platform = platform::CreateDefaultPlatform();
     V8::InitializePlatform(platform);
     V8::Initialize();
@@ -182,24 +216,41 @@ int main(int argc, char* argv[]) {
         Isolate::Scope isolate_scope(isolate);
         // Create a stack-allocated handle scope.
         HandleScope handle_scope(isolate);
-
-        Local<ObjectTemplate> global = ObjectTemplate::New(isolate);
-
-        global->Set(String::NewFromUtf8(isolate, "print", NewStringType::kNormal).ToLocalChecked(),
-                    FunctionTemplate::New(isolate, LogCallback));
-
+        
+        //Local<ObjectTemplate> global = ObjectTemplate::New(isolate);
+        //global->Set(String::NewFromUtf8(isolate, "print", NewStringType::kNormal).ToLocalChecked(), FunctionTemplate::New(isolate, LogCallback));
+        
         // Create a new context.
-        Local<Context> context = Context::New(isolate, NULL, global);
-
+        Local<Context> context = Context::New(isolate, NULL);
+        
         // Enter the context for compiling and running the hello world script.
         Context::Scope context_scope(context);
         
+        context->Global()->Set(String::NewFromUtf8(isolate, "print", NewStringType::kNormal).ToLocalChecked(),
+                               FunctionTemplate::New(isolate, LogCallback)->GetFunction());
+        
         size_t testSize = 1024;
-        void* testData = malloc(1024);
+        char* testData = (char*) malloc(1024);
+        memset(testData, 0, 1);
+        
+        testData[3] = 77;
         
         makeGlobalByteArray(isolate, "testData", testSize, testData);
         
-        ExecuteScript(isolate, "windowTitle = 'meow'; screenWidth = 800; print(testData.length); function process() { print('Hello, Log callback called from JavaScript!'); return 1 }; 'Hello' + ', World!'");
+        ExecuteScript(isolate,
+            "windowTitle = 'meow'; \
+             screenWidth = 800; \
+             testBool1 = true; \
+             testBool2 = false; \
+             var testBool3; \
+             print(testData.length); \
+             print(testData[3]); \
+             function process() { \
+                print('Hello, Log callback called from JavaScript!'); \
+                return 1 \
+             }; \
+             'Hello' + ', World!'"
+        );
         
         double sw = GetNumber(isolate, "screenWidth", 640);
         
@@ -208,6 +259,11 @@ int main(int argc, char* argv[]) {
         const char* wt = GetString(isolate, "windowTitle", "V8 SDL2");
     
         printf("SYSTEM: windowTitle=%s\n", wt);
+        
+        printf("SYSTEM: true=%d\n", GetBoolean(isolate, "testBool1"));
+        printf("SYSTEM: false=%d\n", GetBoolean(isolate, "testBool2"));
+        printf("SYSTEM: undefined=%d\n", GetBoolean(isolate, "testBool3"));
+        printf("SYSTEM: undeclared=%d\n", GetBoolean(isolate, "testBool4"));
         
         // Set up an exception handler before calling the Process function
         TryCatch try_catch(isolate);
