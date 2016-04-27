@@ -486,7 +486,7 @@ int main(int argc, char* argv[]) {
         win = SDL_CreateWindow(windowTitle, 0, 0, screenWidth, screenHeight, 0);
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
         screen = SDL_CreateTexture(renderer,
-                                   SDL_PIXELFORMAT_ARGB8888,
+                                   SDL_PIXELFORMAT_ABGR8888,//SDL_PIXELFORMAT_RGBA8888, //SDL_PIXELFORMAT_ARGB8888,
                                    SDL_TEXTUREACCESS_STREAMING,
                                    screenWidth, screenHeight);
         
