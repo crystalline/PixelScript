@@ -13,11 +13,20 @@
 #include "v8/include/v8.h"
 
 #define COMPILE_BLOBS 1
+#define COMPILE_LOGO 1
 
 #ifdef COMPILE_BLOBS
 #include "natives_blob.cc"
 #include "snapshot_blob.cc"
 #endif
+
+#ifdef COMPILE_LOGO
+#include "logo.c"
+#endif
+
+#define LOGO_W 32
+#define LOGO_H 32
+#define LOGO_BPP 3
 
 #define GLOBAL_PRINT "print"
 #define GLOBAL_LOAD "load"
@@ -287,6 +296,36 @@ void handleQuit() {
     quit = 1;
 }
 
+typedef struct logo {
+    unsigned int width;
+    unsigned int height;
+    unsigned int bytes_per_pixel; /* 2:RGB16, 3:RGB, 4:RGBA */ 
+    unsigned char pixel_data[LOGO_W * LOGO_H * LOGO_BPP + 1];
+} logo;
+
+void SetIcon(SDL_Window* win, logo* logo) {
+    SDL_Surface *icon;
+    //printf("Loading logo, w=%d, h=%d, bpp=%d\n", logo->width, logo->height, logo->bytes_per_pixel);
+    uint32_t rmask,gmask,amask,bmask;
+    #if SDL_BYTEORDER == SDL_BIG_ENDIAN
+        int shift = (logo->bytes_per_pixel == 3) ? 8 : 0;
+        rmask = 0xff000000 >> shift;
+        gmask = 0x00ff0000 >> shift;
+        bmask = 0x0000ff00 >> shift;
+        amask = 0x000000ff >> shift;
+    #else // little endian, like x86
+        rmask = 0x000000ff;
+        gmask = 0x0000ff00;
+        bmask = 0x00ff0000;
+        amask = (logo->bytes_per_pixel == 3) ? 0 : 0xff000000;
+    #endif
+    icon = SDL_CreateRGBSurfaceFrom((void*)logo->pixel_data, logo->width,
+        logo->height, logo->bytes_per_pixel*8, logo->bytes_per_pixel*logo->width,
+        rmask, gmask, bmask, amask);
+    SDL_SetWindowIcon(win, icon);
+    SDL_FreeSurface(icon);
+}
+
 bool ExecGlobFn(Isolate* isolate, const char* fn_name, bool checkExists=false) {
     Local<Context> context(isolate->GetCurrentContext());
     TryCatch try_catch(isolate);
@@ -476,6 +515,10 @@ int main(int argc, char* argv[]) {
         SDL_Init(SDL_INIT_VIDEO);
         
         win = SDL_CreateWindow(windowTitle, 0, 0, screenWidth, screenHeight, 0);
+        
+#ifdef COMPILE_LOGO
+        SetIcon(win, (logo*) &js_logo);
+#endif
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
         screen = SDL_CreateTexture(renderer,
                                    SDL_PIXELFORMAT_ABGR8888,//SDL_PIXELFORMAT_RGBA8888, //SDL_PIXELFORMAT_ARGB8888,
