@@ -28,13 +28,14 @@
 #define LOGO_H 32
 #define LOGO_BPP 3
 
-#define GLOBAL_PRINT "print"
-#define GLOBAL_LOAD "load"
 #define GLOBAL_QUIT "quit"
 #define GLOBAL_PAUSE "pause"
 #define GLOBAL_TITLE "windowTitle"
+#define GLOBAL_NOWINDOW "noWindow"
 #define GLOBAL_SW "screenWidth"
 #define GLOBAL_SH "screenHeight"
+#define GLOBAL_PRINT "print"
+#define GLOBAL_LOAD "load"
 #define GLOBAL_READFILE "readFile"
 #define GLOBAL_WRITEFILE "writeFile"
 #define GLOBAL_APPENDFILE "appendFile"
@@ -42,6 +43,12 @@
 #define GLOBAL_UPDATE "update"
 #define GLOBAL_EXIT "exit"
 #define GLOBAL_FRAMEBUFFER "screen"
+
+#define LOG_PREFIX "LOG: "
+
+#define DEBUG 1
+
+#define PRINT_BYTES(ptr, size) printf("bytes: "); for (int i=0; i<size; i++) { printf("%hhx ", ((unsigned char*)ptr)[i]); } puts("");
 
 enum EvTypes {
     QUIT, KEY_UP, KEY_DOWN, MOUSE_UP, MOUSE_DOWN, MOUSE_MOVE
@@ -64,9 +71,9 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
     virtual void Free(void* data, size_t) { free(data); }
 };
 
-void Log(const char* event) {
-    printf("LOG: %s\n", event);
-}
+void Log(const char* event) { printf(LOG_PREFIX "%s\n", event); }
+void Error(const char* desc) { printf("Error: %s\n", desc); }
+void Error(const char* desc, const char* value) { printf("Error: %s %s\n", desc, value); }
 
 bool FileExists(const char* name) {
     if (FILE *file = fopen(name, "r")) {
@@ -107,16 +114,24 @@ char* FileRead(const char* name) {
 }
 
 bool FileWrite(const char* name, char* data, size_t size) {
+    
+    printf("FileWrite: %s, size=%zu ", name, size); PRINT_BYTES(data, size);
+    
     FILE* file = fopen(name, "wb");
     if (file == NULL) return false;
     fwrite(data, 1, size, file);
+    fclose(file);
     return true;
 }
 
 bool FileAppend(const char* name, char* data, size_t size) {
+    
+    printf("FileAppend: %s, size=%zu ", name, size); PRINT_BYTES(data, size);
+    
     FILE* file = fopen(name, "ab");
     if (file == NULL) return false;
     fwrite(data, 1, size, file);
+    fclose(file);
     return true;
 }
 
@@ -332,7 +347,7 @@ bool ExecGlobFn(Isolate* isolate, const char* fn_name, bool checkExists=false) {
     
     if (checkExists) {
         if (!CheckFnExists(isolate, "process")) {
-            printf("Error: no \"%s\" function found\n", fn_name);
+            Error("no function found:", fn_name);
             return false;
         }
     }
@@ -373,10 +388,10 @@ static void LoadCallback(const FunctionCallbackInfo<v8::Value>& args) {
     
     if (FileExists(*value) && (source = FileRead(*value))) {
         if (!ExecuteScript(isolate, source)) {
-            printf("Error: couldn't execute javascript file %s\n", *value);
+            Error("couldn't execute javascript file", *value);
         }
     } else {
-        printf("Error: cannot load javascript file %s\n", *value);
+        Error("cannot load javascript file", *value);
     }
 }
 
@@ -405,6 +420,8 @@ static void ReadFileCallback(const FunctionCallbackInfo<v8::Value>& args) {
     size_t size;
     char* data = FileRead(*file_path, &size);
     
+    printf("ReadFile path=%s size=%zu data \n", *file_path, size); PRINT_BYTES(data, size);
+    
     if (data == NULL) {
         args.GetReturnValue().Set(handle_scope.Escape(Undefined(isolate)));
         return;
@@ -429,19 +446,108 @@ static void ReadFileCallback(const FunctionCallbackInfo<v8::Value>& args) {
     delete data;
 }
 
+static void _WriteFile(const FunctionCallbackInfo<v8::Value>& args, bool append=false) {
+    Isolate* isolate = args.GetIsolate();
+    EscapableHandleScope handle_scope(isolate);
+    
+    const char* fnName = append ? "appendFile" : "writeFile";
+    
+    if (args.Length() < 2) {
+        printf("Error: Not enough arguments to %s(file_path, data)\n", fnName);
+        args.GetReturnValue().Set(handle_scope.Escape(Undefined(isolate)));
+        return;
+    }
+    
+    Local<Value> arg0 = args[0];
+    //Persistent<Value> _arg0(isolate, arg0);
+    String::Utf8Value file_path(arg0);
+    
+    Local<Value> arg1 = args[1];
+    //Persistent<Value> _arg1(isolate, arg1);
+    
+    bool encodingBinary = false;
+        
+    if (arg1->IsString()) {
+        encodingBinary = false;
+    } else if (arg1->IsUint8Array()) {
+        encodingBinary = true;
+    } else {
+        printf("Error: Illegal second argument to %s(file_path, data). It should be either string or Uint8Array\n", fnName);
+    }
+    
+    char* dataPtr;
+    size_t dataLength;
+    //Persistent<Uint8Array> _dataArr;
+    
+    if (encodingBinary) {
+        Local<Uint8Array> dataArr = arg1.As<Uint8Array>();
+        //_dataArr.Reset(isolate, dataArr);
+        
+        ArrayBuffer::Contents bcont = dataArr->Buffer()->GetContents();
+        const size_t dataOffset = dataArr->ByteOffset();
+        dataLength = dataArr->ByteLength();
+        dataPtr = static_cast<char*>(bcont.Data()) + dataOffset;
+        
+        if (dataPtr == NULL) {
+            Error("Error: %s cannot get data pointer from the Uint8Array argument\n", fnName);
+            return;
+        }
+        
+        printf("_WriteFile @ bin "); PRINT_BYTES(dataPtr, dataLength);
+        
+        if (append) {
+            FileAppend(*file_path, dataPtr, dataLength);
+        } else {
+            FileWrite(*file_path, dataPtr, dataLength);
+        }
+    } else {
+        String::Utf8Value string_data(Local<Value>::New(isolate, arg1));
+        dataPtr = *string_data;
+        dataLength = string_data.length();
+        
+        printf("_WriteFile @ utf8 "); PRINT_BYTES(dataPtr, dataLength);
+        
+        if (append) {
+            FileAppend(*file_path, dataPtr, dataLength);
+        } else {
+            FileWrite(*file_path, dataPtr, dataLength);
+        }
+    }
+    
+    //_arg0.Reset();
+    //_arg1.Reset();
+    //_dataArr.Reset();
+}
+
+static void WriteFileCallback(const FunctionCallbackInfo<v8::Value>& args) {
+    _WriteFile(args, false);
+}
+
+static void AppendFileCallback(const FunctionCallbackInfo<v8::Value>& args) {
+    _WriteFile(args, true);
+}
+
 #define ENGINE_API(js_name, cpp_name) \
     (context->Global()->Set(String::NewFromUtf8(isolate, js_name, NewStringType::kNormal).ToLocalChecked(), \
                             FunctionTemplate::New(isolate, cpp_name)->GetFunction()));
 
 int main(int argc, char* argv[]) {
     
+    char* sourcePath = NULL;
+    
     if (argc < 2 || !FileExists(argv[1])) {
         printf("Valid usage: ./pixelscript file.js\n");
-        printf("No source file given, exiting\n");
-        return -1;
+        printf("No source file given, trying to load \"app.js\"\n");
+        if (!FileExists("app.js")) {
+            printf("No \"app.js\" found, exiting...\n");
+            return -1;
+        }
+        sourcePath = (char*) "app.js";
+    } else {
+        sourcePath = argv[1];
     }
     
-    const char* source = FileRead(argv[1]);
+    const char* source = FileRead(sourcePath);
     
     // Initialize V8.
     V8::InitializeICU();
@@ -468,7 +574,7 @@ int main(int argc, char* argv[]) {
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = &allocator;
     Isolate* isolate = Isolate::New(create_params);
-
+    
     {
         Isolate::Scope isolate_scope(isolate);
         // Create a stack-allocated handle scope.
@@ -482,6 +588,8 @@ int main(int argc, char* argv[]) {
         ENGINE_API(GLOBAL_PRINT, LogCallback)
         ENGINE_API(GLOBAL_LOAD, LoadCallback)
         ENGINE_API(GLOBAL_READFILE, ReadFileCallback)
+        ENGINE_API(GLOBAL_WRITEFILE, WriteFileCallback)
+        ENGINE_API(GLOBAL_APPENDFILE, AppendFileCallback)
         
         ExecuteScript(isolate, source);
         
@@ -503,106 +611,122 @@ int main(int argc, char* argv[]) {
         
         bool noGraphics = false;
         
-        //Try to init SDL2 window
-        screenWidth = (int) GetNumber(isolate, GLOBAL_SW, 640);
-        screenHeight = (int) GetNumber(isolate, GLOBAL_SH, 480);
-        const char* windowTitle = GetString(isolate, GLOBAL_TITLE, "SDL2 V8 Application");
+        //Check if application wants to run headless
+        bool noWindow = GetBoolean(isolate, GLOBAL_NOWINDOW);
+        
+        quit = 0;
         
         SDL_Window *win = NULL;
         SDL_Renderer *renderer = NULL;
         SDL_Texture *screen = NULL;
-        
-        SDL_Init(SDL_INIT_VIDEO);
-        
-        win = SDL_CreateWindow(windowTitle, 0, 0, screenWidth, screenHeight, 0);
-        
-#ifdef COMPILE_LOGO
-        SetIcon(win, (logo*) &js_logo);
-#endif
-        renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
-        screen = SDL_CreateTexture(renderer,
-                                   SDL_PIXELFORMAT_ABGR8888,//SDL_PIXELFORMAT_RGBA8888, //SDL_PIXELFORMAT_ARGB8888,
-                                   SDL_TEXTUREACCESS_STREAMING,
-                                   screenWidth, screenHeight);
-        
-        size_t fbSize = sizeof(uint32_t)*screenWidth*screenHeight;
-        uint32_t* pixels = (uint32_t*) malloc(fbSize);
+        uint32_t* pixels;
         float t = 0;
-        uint32_t beforeT, afterT;
         
-        makeGlobalByteArray(isolate, GLOBAL_FRAMEBUFFER, fbSize, pixels);
-        
-        if (noGraphics) {
-            printf("ERROR: Couldn't init graphics subsystem, perhaps you forgot to set some global variables\nExiting\n");
-            return -1;
-        }
-        
-        quit = 0;
-        
-        // Mainloop
-        while (!quit) {
-                
-            beforeT = SDL_GetTicks();
+        //If it does then enter simple headless mainloop
+        if (noWindow) {
             
-            t++;
-
-            SDL_Event e;
-            while (SDL_PollEvent(&e)) {
-                if (e.type == SDL_QUIT) {
-                    handleQuit();
-                } else if (e.type == SDL_MOUSEBUTTONDOWN) {
-                    handleMouseDown(&e.button);
-                } else if (e.type == SDL_MOUSEBUTTONUP) {
-                    handleMouseUp(&e.button);
-                } else  if (e.type == SDL_MOUSEMOTION) {
-                    handleMouseMove(&e.motion);
-                } else if (e.type == SDL_KEYDOWN) {
-                    handleKeyDown(&e.key);
-                } else if (e.type == SDL_KEYUP) {
-                    handleKeyUp(&e.key);
-                }
-            }
-            
-            if (!pause) {
-                
-                clearScreen(pixels);
-                
+            while (!quit) {
+                t++;
                 ExecGlobFn(isolate, GLOBAL_UPDATE);
-                
                 quit = quit || GetBoolean(isolate, GLOBAL_QUIT);
-                
-                SDL_UpdateTexture(screen, NULL, pixels, screenWidth * sizeof(uint32_t));
-                
-                SDL_RenderClear(renderer);
-                SDL_RenderCopy(renderer, screen, NULL, NULL);
-                SDL_RenderPresent(renderer);
-                
-                afterT = SDL_GetTicks();
-                
-                if (afterT - beforeT < 1000.0/fps) {
-                    SDL_Delay(1000.0/fps - (afterT - beforeT));
-                    //printf("delay: %f\n", 1000.0/fps - (afterT - beforeT));
-                }
-            } else {
-                SDL_Delay((int)1000.0/fps);
             }
+            
+            ExecGlobFn(isolate, GLOBAL_EXIT);
+            
+        } else {
+            //Default windowed mode. Try to init SDL2 window and enter the Main Event Loop
+            
+            screenWidth = (int) GetNumber(isolate, GLOBAL_SW, 640);
+            screenHeight = (int) GetNumber(isolate, GLOBAL_SH, 480);
+            const char* windowTitle = GetString(isolate, GLOBAL_TITLE, "SDL2 V8 Application");
+            
+            SDL_Init(SDL_INIT_VIDEO);
+            
+            win = SDL_CreateWindow(windowTitle, 0, 0, screenWidth, screenHeight, 0);
+            
+#ifdef COMPILE_LOGO
+            SetIcon(win, (logo*) &js_logo);
+#endif
+            renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
+            screen = SDL_CreateTexture(renderer,
+                                       SDL_PIXELFORMAT_ABGR8888,//SDL_PIXELFORMAT_RGBA8888, //SDL_PIXELFORMAT_ARGB8888,
+                                       SDL_TEXTUREACCESS_STREAMING,
+                                       screenWidth, screenHeight);
+            
+            size_t fbSize = sizeof(uint32_t)*screenWidth*screenHeight;
+            pixels = (uint32_t*) malloc(fbSize);
+            uint32_t beforeT, afterT;
+            
+            makeGlobalByteArray(isolate, GLOBAL_FRAMEBUFFER, fbSize, pixels);
+            
+            if (noGraphics) {
+                printf("ERROR: Couldn't init graphics subsystem, perhaps you forgot to set some global variables\nExiting\n");
+                return -1;
+            }
+            
+            // Mainloop
+            while (!quit) {
+                        
+                beforeT = SDL_GetTicks();
+                
+                t++;
+
+                SDL_Event e;
+                while (SDL_PollEvent(&e)) {
+                    if (e.type == SDL_QUIT) {
+                        handleQuit();
+                    } else if (e.type == SDL_MOUSEBUTTONDOWN) {
+                        handleMouseDown(&e.button);
+                    } else if (e.type == SDL_MOUSEBUTTONUP) {
+                        handleMouseUp(&e.button);
+                    } else  if (e.type == SDL_MOUSEMOTION) {
+                        handleMouseMove(&e.motion);
+                    } else if (e.type == SDL_KEYDOWN) {
+                        handleKeyDown(&e.key);
+                    } else if (e.type == SDL_KEYUP) {
+                        handleKeyUp(&e.key);
+                    }
+                }
+                
+                if (!pause) {
+                    
+                    clearScreen(pixels);
+                    
+                    ExecGlobFn(isolate, GLOBAL_UPDATE);
+                    
+                    quit = quit || GetBoolean(isolate, GLOBAL_QUIT);
+                    
+                    SDL_UpdateTexture(screen, NULL, pixels, screenWidth * sizeof(uint32_t));
+                    
+                    SDL_RenderClear(renderer);
+                    SDL_RenderCopy(renderer, screen, NULL, NULL);
+                    SDL_RenderPresent(renderer);
+                    
+                    afterT = SDL_GetTicks();
+                    
+                    if (afterT - beforeT < 1000.0/fps) {
+                        SDL_Delay(1000.0/fps - (afterT - beforeT));
+                        //printf("delay: %f\n", 1000.0/fps - (afterT - beforeT));
+                    }
+                } else {
+                    SDL_Delay((int)1000.0/fps);
+                }
+            }
+            
+            ExecGlobFn(isolate, GLOBAL_EXIT);
+                        
+            SDL_DestroyTexture(screen);
+            SDL_DestroyRenderer(renderer);
+            SDL_DestroyWindow(win);
+            SDL_Quit();
         }
-        
-        ExecGlobFn(isolate, GLOBAL_EXIT);
-        
-        SDL_DestroyTexture(screen);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(win);
-
-        SDL_Quit();
-
-        return 0;
     }
-
-    // Dispose the isolate and tear down V8.
+    
+    // puts("Exit from V8");
     isolate->Dispose();
     V8::Dispose();
     V8::ShutdownPlatform();
     delete platform;
+    
     return 0;
 }

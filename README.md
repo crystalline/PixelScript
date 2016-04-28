@@ -5,6 +5,7 @@ A minimal SDL2 binding for V8 that allows to create a window, draw 2d graphics p
 
 # How To Use it
 Start the executable (usually named `pixelscript`) with your JavaScript application code as a single argument.
+If no argument is supplied `pixelscript` tries to load an application with default name `app.js`
 A basic Hello World application looks like this:
 ```javascript
 function init() { print("Hello, world!"); }
@@ -13,9 +14,9 @@ function exit() { print("Bye~bye!"); }
 ```
 
 PixelScript interacts with your application JavaScript code via a handful of global functions and variables. The application must define init, update and exit functions. The functions may be empty.
-* init is called before creating a window. It is meant to be used for setting up your application.
-* update is called before drawing each frame. A main function that should contain your app's logic.
-* exit is called before exit. You can use it to save some state and perform cleanup.
+* `init()` is called before creating a window. It is meant to be used for setting up your application.
+* `update(events)` is called before drawing each frame. A main function that should contain your app's logic. `events` is either undefined or an array of event objects.
+* `exit()` is called before exit. You can use it to save some state and perform cleanup.
 
 There are following global variables PixelScript uses:
 * `screenHeight` - height of window's drawing area, default is 480. Should be set either before or inside init() call to be applied.
@@ -30,6 +31,9 @@ There are following global functions PixelScript provides:
 * `writeFile(file_path, data)` - writes a javascript string (encoded as utf8) or an Uint8Array to file, rewriting previous content if any, or creating a new file.
 * `appendFile(file_path, data)` - appends a javascript string (encoded as utf8) or an Uint8Array to file. Creates new file if there isn't any at file_path.
 * `load(file_path)` - execute javascript source from file at file_path, prints error if no file is available at file_path.
+
+# Advanced features
+* `noWindow` if you set this variable to true before or inside init() then pixelscript won't create a window for you, i.e. it will run as a console application. Useful for testing.
 
 # Examples
 There are several examples provided:

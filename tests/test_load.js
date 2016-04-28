@@ -1,4 +1,6 @@
 
+noWindow = true;
+
 function init() {
     print("testing JS file loading");
     load("tests/script.js");
@@ -7,4 +9,4 @@ function init() {
 }
 
 function update() { quit=1 }
-//function exit() {}
+function exit() {}

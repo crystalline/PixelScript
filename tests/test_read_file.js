@@ -1,4 +1,6 @@
 
+noWindow = true;
+
 function init() {
     print("testing JS file reading");
     var str = readFile("tests/test.txt", "utf8");
