@@ -1,7 +1,7 @@
 
 screenWidth = 320;
 screenHeight = 240;
-windowTitle = "Spiral Demo with SDL2 and V8";
+windowTitle = "Spiral Demo built with PixelScript";
 
 function init() {
     print("Init");

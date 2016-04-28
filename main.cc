@@ -20,6 +20,7 @@
 #endif
 
 #define GLOBAL_PRINT "print"
+#define GLOBAL_LOAD "load"
 #define GLOBAL_QUIT "quit"
 #define GLOBAL_PAUSE "pause"
 #define GLOBAL_TITLE "windowTitle"
@@ -32,6 +33,10 @@
 #define GLOBAL_UPDATE "update"
 #define GLOBAL_EXIT "exit"
 #define GLOBAL_FRAMEBUFFER "screen"
+
+enum EvTypes {
+    QUIT, KEY_UP, KEY_DOWN, MOUSE_UP, MOUSE_DOWN, MOUSE_MOVE
+};
 
 using namespace v8;
 
@@ -53,16 +58,6 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
 void Log(const char* event) {
     printf("LOG: %s\n", event);
 }
-
-static void LogCallback(const FunctionCallbackInfo<v8::Value>& args) {
-    if (args.Length() < 1) return;
-    HandleScope scope(args.GetIsolate());
-    Local<Value> arg = args[0];
-    String::Utf8Value value(arg);
-    
-    Log(*value);
-}
-
 
 bool FileExists(const char* name) {
     if (FILE *file = fopen(name, "r")) {
@@ -169,7 +164,7 @@ bool CheckFnExists(Isolate* isolate, const char* fnName) {
     
     Local<Value> fnVal;
     
-    return context->Global()->Get(context, jsFnName).ToLocal(&fnVal) || fnVal->IsFunction();
+    return context->Global()->Get(context, jsFnName).ToLocal(&fnVal) && fnVal->IsFunction();
 }
 
 Local<Function> GetFn(Isolate* isolate, const char* fnName) {
@@ -292,87 +287,6 @@ void handleQuit() {
     quit = 1;
 }
 
-/*
-int main(int argc, char *argv[]) {
-
-    screenW = 800;
-    screenH = 600;
-
-    SDL_Window *win = NULL;
-    SDL_Renderer *renderer = NULL;
-    SDL_Texture *screen = NULL;
-
-    SDL_Init(SDL_INIT_VIDEO);
-
-    win = SDL_CreateWindow("SDL V8", posX, posY, screenW, screenH, 0);
-
-    renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
-
-    screen = SDL_CreateTexture(renderer,
-                                SDL_PIXELFORMAT_ARGB8888,
-                                SDL_TEXTUREACCESS_STREAMING,
-                                screenW, screenH);
-
-    uint32_t* pixels = (uint32_t*) malloc(sizeof(uint32_t)*screenW*screenH);
-    float t = 0;
-    uint32_t beforeT, afterT;
-
-    while (!quit) {
-
-        beforeT = SDL_GetTicks();
-        
-        t++;
-
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
-                handleQuit();
-            } else if (e.type == SDL_MOUSEBUTTONDOWN) {
-                handleMouseDown(&e.button);
-            } else if (e.type == SDL_MOUSEBUTTONUP) {
-                handleMouseUp(&e.button);
-            } else  if (e.type == SDL_MOUSEMOTION) {
-                handleMouseMove(&e.motion);
-            } else if (e.type == SDL_KEYDOWN) {
-                handleKeyDown(&e.key);
-            } else if (e.type == SDL_KEYUP) {
-                handleKeyUp(&e.key);
-            }
-        }
-        
-        if (!pause) {
-
-            clearScreen(pixels);
-
-            updateScreen(pixels, t);
-
-            SDL_UpdateTexture(screen, NULL, pixels, screenW * sizeof (uint32_t));
-
-            SDL_RenderClear(renderer);
-            SDL_RenderCopy(renderer, screen, NULL, NULL);
-            SDL_RenderPresent(renderer);
-
-            afterT = SDL_GetTicks();
-
-            if (afterT - beforeT < 1000.0/fps) {
-                SDL_Delay(1000.0/fps - (afterT - beforeT));
-                //printf("delay: %f\n", 1000.0/fps - (afterT - beforeT));
-            }
-        } else {
-            SDL_Delay(20);
-        }
-    }
-
-    SDL_DestroyTexture(screen);
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(win);
-
-    SDL_Quit();
-
-    return 0;
-}
-*/
-
 bool ExecGlobFn(Isolate* isolate, const char* fn_name, bool checkExists=false) {
     Local<Context> context(isolate->GetCurrentContext());
     TryCatch try_catch(isolate);
@@ -400,6 +314,82 @@ bool ExecGlobFn(Isolate* isolate, const char* fn_name, bool checkExists=false) {
     }
 }
 
+static void LogCallback(const FunctionCallbackInfo<v8::Value>& args) {
+    if (args.Length() < 1) return;
+    HandleScope scope(args.GetIsolate());
+    Local<Value> arg = args[0];
+    String::Utf8Value value(arg);
+    
+    Log(*value);
+}
+
+static void LoadCallback(const FunctionCallbackInfo<v8::Value>& args) {
+    if (args.Length() < 1) return;
+    Isolate* isolate = args.GetIsolate();
+    HandleScope scope(isolate);
+    Local<Value> arg = args[0];
+    String::Utf8Value value(arg);
+    
+    char* source = NULL;
+    
+    if (FileExists(*value) && (source = FileRead(*value))) {
+        if (!ExecuteScript(isolate, source)) {
+            printf("Error: couldn't execute javascript file %s\n", *value);
+        }
+    } else {
+        printf("Error: cannot load javascript file %s\n", *value);
+    }
+}
+
+static void ReadFileCallback(const FunctionCallbackInfo<v8::Value>& args) {
+    Isolate* isolate = args.GetIsolate();
+    EscapableHandleScope handle_scope(isolate);
+    
+    if (args.Length() < 1) {
+        args.GetReturnValue().Set(handle_scope.Escape(Undefined(isolate)));
+        return;
+    }
+    
+    Local<Value> arg0 = args[0];
+    String::Utf8Value file_path(arg0);
+    
+    bool encodingBinary = true;
+    
+    if (args.Length() >= 2) {
+        Local<Value> arg1 = args[1];
+        String::Utf8Value encoding(arg1);
+        if (strcmp(*encoding, "utf8") == 0) {
+            encodingBinary = false;
+        }
+    }
+    
+    size_t size;
+    char* data = FileRead(*file_path, &size);
+    
+    if (data == NULL) {
+        args.GetReturnValue().Set(handle_scope.Escape(Undefined(isolate)));
+        return;
+    }
+    
+    Local<Value> ret;
+    
+    if (encodingBinary) {
+        Local<ArrayBuffer> buffer = ArrayBuffer::New(isolate, size);
+        ArrayBuffer::Contents bcont = buffer->GetContents();
+        void* bufPtr = bcont.Data();
+        memcpy(bufPtr, data, size);
+        
+        Local<Uint8Array> aret = Uint8Array::New(buffer, 0, size);
+        args.GetReturnValue().Set(handle_scope.Escape(aret));
+    } else {
+        Local<String> sret;
+        bool OK = String::NewFromUtf8(isolate, data, NewStringType::kNormal).ToLocal(&sret);
+        args.GetReturnValue().Set(handle_scope.Escape(sret));
+    }
+    
+    delete data;
+}
+
 #define ENGINE_API(js_name, cpp_name) \
     (context->Global()->Set(String::NewFromUtf8(isolate, js_name, NewStringType::kNormal).ToLocalChecked(), \
                             FunctionTemplate::New(isolate, cpp_name)->GetFunction()));
@@ -407,7 +397,7 @@ bool ExecGlobFn(Isolate* isolate, const char* fn_name, bool checkExists=false) {
 int main(int argc, char* argv[]) {
     
     if (argc < 2 || !FileExists(argv[1])) {
-        printf("Valid usage: ./engine file.js\n");
+        printf("Valid usage: ./pixelscript file.js\n");
         printf("No source file given, exiting\n");
         return -1;
     }
@@ -451,19 +441,21 @@ int main(int argc, char* argv[]) {
         
         // Set globals
         ENGINE_API(GLOBAL_PRINT, LogCallback)
+        ENGINE_API(GLOBAL_LOAD, LoadCallback)
+        ENGINE_API(GLOBAL_READFILE, ReadFileCallback)
         
         ExecuteScript(isolate, source);
         
         bool noFnFound = false;
         
         if (!CheckFnExists(isolate, GLOBAL_INIT)) {
-            noFnFound = true; printf("No '" GLOBAL_INIT "' function found. '" GLOBAL_INIT "' is required by the engine, please, create it\n");
+            noFnFound = true; printf("No '" GLOBAL_INIT "' function found. '" GLOBAL_INIT "' is required by the engine, please create it\n");
         }
         if (!CheckFnExists(isolate, GLOBAL_UPDATE)) {
-            noFnFound = true; printf("No '" GLOBAL_UPDATE "' function found. '" GLOBAL_UPDATE "' is required by the engine, please, create it\n");
+            noFnFound = true; printf("No '" GLOBAL_UPDATE "' function found. '" GLOBAL_UPDATE "' is required by the engine, please create it\n");
         }
         if (!CheckFnExists(isolate, GLOBAL_EXIT)) {
-            noFnFound = true; printf("No '" GLOBAL_EXIT "' function found. '" GLOBAL_EXIT "' is required by the engine, please, create it\n");
+            noFnFound = true; printf("No '" GLOBAL_EXIT "' function found. '" GLOBAL_EXIT "' is required by the engine, please create it\n");
         }
         
         if (noFnFound) { printf("Exiting\n"); return -1; }
@@ -562,58 +554,6 @@ int main(int argc, char* argv[]) {
         SDL_Quit();
 
         return 0;
-        
-        /*
-        size_t testSize = 1024;
-        char* screen = (char*) malloc(1024);
-        memset(testData, 0, 1);
-        
-        makeGlobalByteArray(isolate, "testData", testSize, testData);
-        
-        double sw = GetNumber(isolate, "screenWidth", 640);
-        
-        printf("SYSTEM: screenWidth=%f\n", sw);
-        
-        const char* wt = GetString(isolate, "windowTitle", "V8 SDL2");
-    
-        printf("SYSTEM: windowTitle=%s\n", wt);
-        
-        printf("SYSTEM: true=%d\n", GetBoolean(isolate, "testBool1"));
-        printf("SYSTEM: false=%d\n", GetBoolean(isolate, "testBool2"));
-        printf("SYSTEM: undefined=%d\n", GetBoolean(isolate, "testBool3"));
-        printf("SYSTEM: undeclared=%d\n", GetBoolean(isolate, "testBool4"));
-        
-        // Set up an exception handler before calling the Process function
-        TryCatch try_catch(isolate);
-
-        if (CheckFnExists(isolate, "process")) {
-            printf("JavaScript Function found: \"process\"\n");
-        } else {
-            printf("Error: no \"process\" function found\n");
-            return 1;
-        }
-
-        // Get function
-        Local<Function> process_fun = GetFn(isolate, "process");
-
-        // Invoke the process function, giving the global object as 'this'
-        // and one argument, the request.
-
-        const unsigned argc = 2;
-        Local<Value> argv[argc] = { Null(isolate), String::NewFromUtf8(isolate, "success") };
-
-        //Local<Function> process = v8::Local<v8::Function>::New(isolate, process_);
-
-        Local<Value> result;
-
-        if (!process_fun->Call(context, context->Global(), argc, argv).ToLocal(&result)) {
-            String::Utf8Value error(try_catch.Exception());
-            printf("Error: %s\n", *error);
-            return false;
-        } else {
-            return true;
-        }
-        */
     }
 
     // Dispose the isolate and tear down V8.
