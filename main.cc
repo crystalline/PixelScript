@@ -16,8 +16,8 @@
 #define COMPILE_LOGO 1
 
 #ifdef COMPILE_BLOBS
-#include "natives_blob.cc"
-#include "snapshot_blob.cc"
+#include "natives_blob.c"
+#include "snapshot_blob.c"
 #endif
 
 #ifdef COMPILE_LOGO

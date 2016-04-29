@@ -25,7 +25,6 @@ function init() {
     if ((rdata = readFile("tests/test_arr.bin")) && typeof rdata === typeof data && cmpArr(rdata, data)) {
         print("writeFile @ Uint8Array : [OK]");
     } else fail();
-    
     print("Rdata: type="+typeof rdata+" length="+rdata.length);
     
     print("JS readFile utf8: "+readFile("tests/test_str.txt", "utf8").length);

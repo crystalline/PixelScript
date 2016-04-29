@@ -1,5 +1,7 @@
 # PixelScript
-A minimal SDL2 binding for V8 that allows to create a window, draw 2d graphics pixel-by-pixel and handle user input. It can be viewed as super-minimalisic native application framework for JavaScript.
+A minimalistic native graphical JavaScript application runtime.
+An SDL2 binding for V8 that allows to create a window, draw 2d graphics pixel-by-pixel and handle user input.
+Writing 2d games with JavaScript has never been this straightforward!
 
 ![alt screenshot](https://raw.githubusercontent.com/crystalline/PixelScript/master/demo.png)
 
@@ -33,7 +35,7 @@ There are following global functions PixelScript provides:
 * `load(file_path)` - execute javascript source from file at file_path, prints error if no file is available at file_path.
 
 # Advanced features
-* `noWindow` if you set this variable to true before or inside init() then pixelscript won't create a window for you, i.e. it will run as a console application. Useful for testing.
+* `noWindow` - if you set this variable to true before or inside init() then pixelscript won't create a window for you, i.e. it will run as a console application. Useful for testing.
 
 # Examples
 There are several examples provided:
@@ -46,8 +48,51 @@ There are several examples provided:
 Building PixelScript is not necessary if you just want to develop your native application in JavaScript: just download the PixelScript binary for your platform and you are good to go.
 Building from source is necessary if you want to modify PixelScript (e.g. add some new functions specific to your application).
 
-To build PixelScript you will need to get and build the dependencies first:
-* V8 (if you already have it you can link it to project's directory)
-* SDL2 can be installed from your package repository
+PixelScript has two dependencies: V8 JavaScript engine and SDL2 media library. These libraries are known to work on all major OSes and CPU architectures. For now the main build target is Ubuntu 14.04 LTS, with Windows 7 x64 planned for a future release. If you manage to build PixelScript on your platform, feel free to make a pull request!
+
+### Ubuntu 14.04 LTS 64-bit
+There are two different builds: an easier one that uses SDL2 library from the repo, and a more complex one that uses local SDL2. The former is primarily for development while the latter is for deployment. (Making pull requests that enhance these builds is encouraged!)
+
+#### Repo-based build (if you don't know what to do, choose this!)
+Install development dependencies:
+
+```bash
+sudo apt-get install build-essential g++ git xorg-dev libudev-dev libts-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev libopenal-dev libogg-dev libvorbis-dev libaudiofile-dev libpng12-dev libfreetype6-dev libusb-dev libdbus-1-dev zlib1g-dev libdirectfb-dev libsdl2-dev
+```
+Get your copy of PixelScript
+```bash
+git clone https://github.com/crystalline/PixelScript
+cd PixelScript
+```
+Compile PixelScript (It will automatically download and compile v8, this will take some time. For 32-bit version edit build_v8.sh).
+```bash
+./build.sh
+```
+Run graphical demo
+```bash
+./pixelscript demo_spirals.js
+```
+
+#### A local SDL2 build (for experts)
+Install development dependencies:
+```bash
+sudo apt-get install build-essential g++ git xorg-dev libudev-dev libts-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev libopenal-dev libogg-dev libvorbis-dev libaudiofile-dev libpng12-dev libfreetype6-dev libusb-dev libdbus-1-dev zlib1g-dev libdirectfb-dev libsdl2-dev
+```
+Get your copy of PixelScript
+```bash
+git clone https://github.com/crystalline/PixelScript
+cd PixelScript
+```
+Compile PixelScript (It will automatically download and compile v8 and local SDL2, this will take some time. For 32-bit version edit build_v8.sh).
+```bash
+./build_static.sh
+```
+Run graphical demo
+```bash
+./pixelscript demo_spirals.js
+```
+
+### Windows 7
 
 (Precise build instructions remain to be written)
+
