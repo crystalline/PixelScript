@@ -35,6 +35,7 @@ There are following global functions PixelScript provides:
 * `load(file_path)` - execute javascript source from file at file_path, prints error if no file is available at file_path.
 
 # Advanced features
+* `hideCursor` - if set to true, the OS mouse cursor will be hidden on next frame. If set to false or undefined, the cursor will be shown. Default value is undefined.
 * `noWindow` - if you set this variable to true before or inside init() then pixelscript won't create a window for you, i.e. it will run as a console application. Useful for testing.
 
 # Examples

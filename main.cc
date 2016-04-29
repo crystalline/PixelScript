@@ -32,6 +32,7 @@
 #define GLOBAL_PAUSE "pause"
 #define GLOBAL_TITLE "windowTitle"
 #define GLOBAL_NOWINDOW "noWindow"
+#define GLOBAL_HIDECURSOR "hideCursor"
 #define GLOBAL_SW "screenWidth"
 #define GLOBAL_SH "screenHeight"
 #define GLOBAL_PRINT "print"
@@ -51,7 +52,7 @@
 #define PRINT_BYTES(ptr, size) printf("bytes: "); for (int i=0; i<size; i++) { printf("%hhx ", ((unsigned char*)ptr)[i]); } puts("");
 
 enum EvTypes {
-    QUIT, KEY_UP, KEY_DOWN, MOUSE_UP, MOUSE_DOWN, MOUSE_MOVE
+    EV_QUIT, EV_KEY_UP, EV_KEY_DOWN, EV_MOUSE_UP, EV_MOUSE_DOWN, EV_MOUSE_MOVE
 };
 
 using namespace v8;
@@ -60,6 +61,8 @@ int screenWidth, screenHeight;
 bool pause = 0;
 bool quit = 0;
 double fps = 50.0;
+bool appHideCursor = false;
+bool prevHideCursor = false;
 
 class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
     public:
@@ -215,7 +218,7 @@ Local<Function> GetFn(Isolate* isolate, const char* fnName) {
 
 double GetNumber(Isolate* isolate, const char* globName, double defaultValue) {
     Local<Context> context(isolate->GetCurrentContext());
-    EscapableHandleScope handle_scope(isolate);
+    HandleScope handle_scope(isolate);
     Local<String> name = String::NewFromUtf8(isolate, globName, NewStringType::kNormal).ToLocalChecked();
     
     Local<Value> val;
@@ -230,7 +233,7 @@ double GetNumber(Isolate* isolate, const char* globName, double defaultValue) {
 
 const char* GetString(Isolate* isolate, const char* globName, const char* defaultValue) {
     Local<Context> context(isolate->GetCurrentContext());
-    EscapableHandleScope handle_scope(isolate);
+    HandleScope handle_scope(isolate);
     Local<String> name = String::NewFromUtf8(isolate, globName, NewStringType::kNormal).ToLocalChecked();
     
     Local<Value> val;
@@ -246,7 +249,7 @@ const char* GetString(Isolate* isolate, const char* globName, const char* defaul
 
 bool GetBoolean(Isolate* isolate, const char* globName) {
     Local<Context> context(isolate->GetCurrentContext());
-    EscapableHandleScope handle_scope(isolate);
+    HandleScope handle_scope(isolate);
     Local<String> name = String::NewFromUtf8(isolate, globName, NewStringType::kNormal).ToLocalChecked();
     
     Local<Value> val;
@@ -270,13 +273,9 @@ void makeGlobalByteArray(Isolate* isolate, const char* globName, size_t size, vo
 
 void clearScreen(uint32_t* pixels) {
     int i;
-    int N = screenWidth*screenHeight;
-    for (i=0; i<N; i++) {
-        pixels[i] = 0x00000000;
-    }
+    size_t N = screenWidth*screenHeight*4;
+    memset(pixels, 0, N);
 }
-
-//void updateScreen(uint32_t* pixels, float t) {}
 
 void handleMouseDown(SDL_MouseButtonEvent* event) {
     int x, y;    
@@ -353,9 +352,36 @@ bool ExecGlobFn(Isolate* isolate, const char* fn_name, bool checkExists=false) {
     }
     // Get function
     Local<Function> fn = GetFn(isolate, fn_name);
+    // Invoke the process function, giving the global object as 'this' and 0 arguments
+    const unsigned argc = 0;
+    Local<Value> argv[argc] = {  };
+
+    Local<Value> result;
+    
+    if (!fn->Call(context, context->Global(), argc, argv).ToLocal(&result)) {
+        String::Utf8Value error(try_catch.Exception());
+        printf("Exception in function \"%s\": %s\n", fn_name, *error);
+        return false;
+    } else {
+        return true;
+    }
+}
+
+bool ExecGlobFnArg(Isolate* isolate, const char* fn_name, Local<Value> arg, bool checkExists=false) {
+    Local<Context> context(isolate->GetCurrentContext());
+    TryCatch try_catch(isolate);
+    
+    if (checkExists) {
+        if (!CheckFnExists(isolate, "process")) {
+            Error("no function found:", fn_name);
+            return false;
+        }
+    }
+    // Get function
+    Local<Function> fn = GetFn(isolate, fn_name);
     // Invoke the process function, giving the global object as 'this'
     const unsigned argc = 1;
-    Local<Value> argv[argc] = { Null(isolate) };
+    Local<Value> argv[argc] = { arg };
 
     Local<Value> result;
     
@@ -620,13 +646,11 @@ int main(int argc, char* argv[]) {
         SDL_Renderer *renderer = NULL;
         SDL_Texture *screen = NULL;
         uint32_t* pixels;
-        float t = 0;
         
         //If it does then enter simple headless mainloop
         if (noWindow) {
             
             while (!quit) {
-                t++;
                 ExecGlobFn(isolate, GLOBAL_UPDATE);
                 quit = quit || GetBoolean(isolate, GLOBAL_QUIT);
             }
@@ -668,23 +692,57 @@ int main(int argc, char* argv[]) {
             while (!quit) {
                         
                 beforeT = SDL_GetTicks();
-                
-                t++;
 
                 SDL_Event e;
+                
+                Local<Array> jsEventArr;
+                bool evArrayCreated = false;
+                size_t evCount = 0;
+                
                 while (SDL_PollEvent(&e)) {
+                    
+                    if (!evArrayCreated) { jsEventArr = Array::New(isolate, 1); evArrayCreated = true; }
+                    
                     if (e.type == SDL_QUIT) {
-                        handleQuit();
+                        quit = 1;
+                        Local<Object> event = Object::New(isolate);
+                        event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_QUIT));
+                        jsEventArr->Set(evCount++, event);
                     } else if (e.type == SDL_MOUSEBUTTONDOWN) {
-                        handleMouseDown(&e.button);
+                        Local<Object> event = Object::New(isolate);
+                        event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_MOUSEBUTTONDOWN));
+                        event->Set(String::NewFromUtf8(isolate, "x"), Integer::New(isolate, e.button.x));
+                        event->Set(String::NewFromUtf8(isolate, "y"), Integer::New(isolate, e.button.y));
+                        event->Set(String::NewFromUtf8(isolate, "button"), Integer::New(isolate, e.button.button));
+                        jsEventArr->Set(evCount++, event);
                     } else if (e.type == SDL_MOUSEBUTTONUP) {
-                        handleMouseUp(&e.button);
+                        Local<Object> event = Object::New(isolate);
+                        event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_MOUSEBUTTONUP));
+                        event->Set(String::NewFromUtf8(isolate, "x"), Integer::New(isolate, e.button.x));
+                        event->Set(String::NewFromUtf8(isolate, "y"), Integer::New(isolate, e.button.y));
+                        event->Set(String::NewFromUtf8(isolate, "button"), Integer::New(isolate, e.button.button));
+                        jsEventArr->Set(evCount++, event);
                     } else  if (e.type == SDL_MOUSEMOTION) {
-                        handleMouseMove(&e.motion);
+                        Local<Object> event = Object::New(isolate);
+                        event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_MOUSEMOTION));
+                        event->Set(String::NewFromUtf8(isolate, "x"), Integer::New(isolate, e.motion.x));
+                        event->Set(String::NewFromUtf8(isolate, "y"), Integer::New(isolate, e.motion.y));
+                        jsEventArr->Set(evCount++, event);
                     } else if (e.type == SDL_KEYDOWN) {
-                        handleKeyDown(&e.key);
+                        SDL_Keysym key = e.key.keysym;
+                        int Scode = key.scancode;
+                        if (Scode == SDL_SCANCODE_ESCAPE) { quit = 1; }
+                        Local<Object> event = Object::New(isolate);
+                        event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_KEYDOWN));
+                        event->Set(String::NewFromUtf8(isolate, "code"), Integer::New(isolate, Scode));
+                        jsEventArr->Set(evCount++, event);
                     } else if (e.type == SDL_KEYUP) {
-                        handleKeyUp(&e.key);
+                        SDL_Keysym key = e.key.keysym;
+                        int Scode = key.scancode;
+                        Local<Object> event = Object::New(isolate);
+                        event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_KEYUP));
+                        event->Set(String::NewFromUtf8(isolate, "code"), Integer::New(isolate, Scode));
+                        jsEventArr->Set(evCount++, event);
                     }
                 }
                 
@@ -692,9 +750,20 @@ int main(int argc, char* argv[]) {
                     
                     clearScreen(pixels);
                     
-                    ExecGlobFn(isolate, GLOBAL_UPDATE);
+                    //Call update either with event array or with undefined
+                    if (evArrayCreated) {
+                        ExecGlobFnArg(isolate, GLOBAL_UPDATE, jsEventArr);
+                    } else {
+                        ExecGlobFn(isolate, GLOBAL_UPDATE);
+                    }
                     
                     quit = quit || GetBoolean(isolate, GLOBAL_QUIT);
+                    
+                    //Update cursor show/hide state on each frame
+                    appHideCursor = GetBoolean(isolate, GLOBAL_HIDECURSOR);
+                    if (appHideCursor && !prevHideCursor) { SDL_ShowCursor(0); }
+                    if (!appHideCursor && prevHideCursor) { SDL_ShowCursor(1); }
+                    prevHideCursor = appHideCursor;
                     
                     SDL_UpdateTexture(screen, NULL, pixels, screenWidth * sizeof(uint32_t));
                     
