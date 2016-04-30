@@ -1,4 +1,8 @@
-
+/* A somewhat hypnotic analytical spiral demo
+ * Copyright (c) 2016 Crystalline Emerald
+ * This software is distrbuted under MIT license, see LICENSE for details
+ */
+ 
 screenWidth = 320;
 screenHeight = 240;
 windowTitle = "Spiral Demo built with PixelScript";

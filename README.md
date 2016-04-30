@@ -36,6 +36,7 @@ There are following global functions PixelScript provides:
 
 # Advanced features
 * `hideCursor` - if set to true, the OS mouse cursor will be hidden on next frame. If set to false or undefined, the cursor will be shown. Default value is undefined.
+* `noClearScreen` - if set to true, no automatic screen cleaning will be performed before calling `update()`.
 * `noWindow` - if you set this variable to true before or inside init() then pixelscript won't create a window for you, i.e. it will run as a console application. Useful for testing.
 
 # Examples
@@ -43,7 +44,10 @@ There are several examples provided:
 ```bash
 ./pixelscript hello_world.js
 ./pixelscript demo_spirals.js
+./pixelscript demo_events.js
+./pixelscript demo_paint.js
 ```
+If you really want you may also look at *.js files in test/ directory.
 
 # How To Build
 Building PixelScript is not necessary if you just want to develop your native application in JavaScript: just download the PixelScript binary for your platform and you are good to go.

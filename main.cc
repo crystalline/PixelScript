@@ -1,4 +1,9 @@
-//A very simple 2d game engine built with SDL2 and V8
+/* A very simple 2d game engine built with SDL2 and V8
+ * 
+ * Copyright (c) 2016 Crystalline Emerald
+ * 
+ * This software is distrbuted under MIT license, see LICENSE for details
+ */
 
 #include <stdio.h>
 #include <SDL2/SDL.h>
@@ -33,6 +38,7 @@
 #define GLOBAL_TITLE "windowTitle"
 #define GLOBAL_NOWINDOW "noWindow"
 #define GLOBAL_HIDECURSOR "hideCursor"
+#define GLOBAL_NOCLEARSCREEN "noClearScreen"
 #define GLOBAL_SW "screenWidth"
 #define GLOBAL_SH "screenHeight"
 #define GLOBAL_PRINT "print"
@@ -557,6 +563,10 @@ static void AppendFileCallback(const FunctionCallbackInfo<v8::Value>& args) {
     (context->Global()->Set(String::NewFromUtf8(isolate, js_name, NewStringType::kNormal).ToLocalChecked(), \
                             FunctionTemplate::New(isolate, cpp_name)->GetFunction()));
 
+#define GLOB_INT(js_name, integer) \
+    (context->Global()->Set(String::NewFromUtf8(isolate, js_name, NewStringType::kNormal).ToLocalChecked(), \
+                            Integer::New(isolate, integer)));
+
 int main(int argc, char* argv[]) {
     
     char* sourcePath = NULL;
@@ -610,12 +620,20 @@ int main(int argc, char* argv[]) {
         // Enter the context
         Context::Scope context_scope(context);
         
-        // Set globals
+        // Set global functions
         ENGINE_API(GLOBAL_PRINT, LogCallback)
         ENGINE_API(GLOBAL_LOAD, LoadCallback)
         ENGINE_API(GLOBAL_READFILE, ReadFileCallback)
         ENGINE_API(GLOBAL_WRITEFILE, WriteFileCallback)
         ENGINE_API(GLOBAL_APPENDFILE, AppendFileCallback)
+        
+        // Set SDL constants
+        GLOB_INT("SDL_QUIT",SDL_QUIT)
+        GLOB_INT("SDL_MOUSEBUTTONDOWN",SDL_MOUSEBUTTONDOWN)
+        GLOB_INT("SDL_MOUSEBUTTONUP",SDL_MOUSEBUTTONUP)
+        GLOB_INT("SDL_MOUSEMOTION",SDL_MOUSEMOTION)
+        GLOB_INT("SDL_KEYDOWN",SDL_KEYDOWN)
+        GLOB_INT("SDL_KEYUP",SDL_KEYUP)
         
         ExecuteScript(isolate, source);
         
@@ -744,11 +762,16 @@ int main(int argc, char* argv[]) {
                         event->Set(String::NewFromUtf8(isolate, "code"), Integer::New(isolate, Scode));
                         jsEventArr->Set(evCount++, event);
                     }
+                    
+                    //No events were pushed into it anyway
+                    if (!evCount) { evArrayCreated = false; }
                 }
                 
                 if (!pause) {
                     
-                    clearScreen(pixels);
+                    if (!GetBoolean(isolate, GLOBAL_NOCLEARSCREEN)) {
+                        clearScreen(pixels);
+                    }
                     
                     //Call update either with event array or with undefined
                     if (evArrayCreated) {
