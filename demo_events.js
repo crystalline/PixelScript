@@ -4,7 +4,7 @@ function init() {
 }
 
 function update(events) {
-    print("update");
+    //print("update");
     if (events) {
         for (var i=0; i<events.length; i++) {
             print("Events: "+JSON.stringify(events[i]));

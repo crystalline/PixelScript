@@ -25,7 +25,6 @@ function update(events) {
     if (events) {
         for (var i=0; i<events.length; i++) {
             var event = events[i];
-            print(event);
             if (event.type == SDL_MOUSEBUTTONDOWN) {
                 mouseDown = true;
                 draw(event.x, event.y);

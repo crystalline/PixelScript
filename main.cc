@@ -634,6 +634,13 @@ int main(int argc, char* argv[]) {
         GLOB_INT("SDL_MOUSEMOTION",SDL_MOUSEMOTION)
         GLOB_INT("SDL_KEYDOWN",SDL_KEYDOWN)
         GLOB_INT("SDL_KEYUP",SDL_KEYUP)
+        GLOB_INT("SDL_TEXTINPUT",SDL_TEXTINPUT)
+        GLOB_INT("SDL_TEXTEDITING",SDL_TEXTEDITING)
+        GLOB_INT("SDL_BUTTON_LEFT",SDL_BUTTON_LEFT)
+        GLOB_INT("SDL_BUTTON_MIDDLE",SDL_BUTTON_MIDDLE)
+        GLOB_INT("SDL_BUTTON_RIGHT",SDL_BUTTON_RIGHT)
+        GLOB_INT("SDL_BUTTON_X1",SDL_BUTTON_X1)
+        GLOB_INT("SDL_BUTTON_X2",SDL_BUTTON_X2)
         
         ExecuteScript(isolate, source);
         
@@ -680,7 +687,7 @@ int main(int argc, char* argv[]) {
             
             screenWidth = (int) GetNumber(isolate, GLOBAL_SW, 640);
             screenHeight = (int) GetNumber(isolate, GLOBAL_SH, 480);
-            const char* windowTitle = GetString(isolate, GLOBAL_TITLE, "SDL2 V8 Application");
+            const char* windowTitle = GetString(isolate, GLOBAL_TITLE, "PixelScript Application");
             
             SDL_Init(SDL_INIT_VIDEO);
             
@@ -694,6 +701,8 @@ int main(int argc, char* argv[]) {
                                        SDL_PIXELFORMAT_ABGR8888,//SDL_PIXELFORMAT_RGBA8888, //SDL_PIXELFORMAT_ARGB8888,
                                        SDL_TEXTUREACCESS_STREAMING,
                                        screenWidth, screenHeight);
+            
+            SDL_StartTextInput();
             
             size_t fbSize = sizeof(uint32_t)*screenWidth*screenHeight;
             pixels = (uint32_t*) malloc(fbSize);
@@ -732,6 +741,7 @@ int main(int argc, char* argv[]) {
                         event->Set(String::NewFromUtf8(isolate, "x"), Integer::New(isolate, e.button.x));
                         event->Set(String::NewFromUtf8(isolate, "y"), Integer::New(isolate, e.button.y));
                         event->Set(String::NewFromUtf8(isolate, "button"), Integer::New(isolate, e.button.button));
+                        event->Set(String::NewFromUtf8(isolate, "clicks"), Integer::New(isolate, e.button.clicks)); 
                         jsEventArr->Set(evCount++, event);
                     } else if (e.type == SDL_MOUSEBUTTONUP) {
                         Local<Object> event = Object::New(isolate);
@@ -739,6 +749,7 @@ int main(int argc, char* argv[]) {
                         event->Set(String::NewFromUtf8(isolate, "x"), Integer::New(isolate, e.button.x));
                         event->Set(String::NewFromUtf8(isolate, "y"), Integer::New(isolate, e.button.y));
                         event->Set(String::NewFromUtf8(isolate, "button"), Integer::New(isolate, e.button.button));
+                        event->Set(String::NewFromUtf8(isolate, "clicks"), Integer::New(isolate, e.button.clicks)); 
                         jsEventArr->Set(evCount++, event);
                     } else  if (e.type == SDL_MOUSEMOTION) {
                         Local<Object> event = Object::New(isolate);
@@ -749,17 +760,37 @@ int main(int argc, char* argv[]) {
                     } else if (e.type == SDL_KEYDOWN) {
                         SDL_Keysym key = e.key.keysym;
                         int Scode = key.scancode;
+                        int Sym = key.sym;
+                        int Mod = key.mod;
                         if (Scode == SDL_SCANCODE_ESCAPE) { quit = 1; }
                         Local<Object> event = Object::New(isolate);
                         event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_KEYDOWN));
                         event->Set(String::NewFromUtf8(isolate, "code"), Integer::New(isolate, Scode));
+                        event->Set(String::NewFromUtf8(isolate, "sym"), Integer::New(isolate, Sym));
+                        event->Set(String::NewFromUtf8(isolate, "mod"), Integer::New(isolate, (int) Mod));
                         jsEventArr->Set(evCount++, event);
                     } else if (e.type == SDL_KEYUP) {
                         SDL_Keysym key = e.key.keysym;
                         int Scode = key.scancode;
+                        int Sym = key.sym;
+                        int Mod = key.mod;
                         Local<Object> event = Object::New(isolate);
                         event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_KEYUP));
                         event->Set(String::NewFromUtf8(isolate, "code"), Integer::New(isolate, Scode));
+                        event->Set(String::NewFromUtf8(isolate, "sym"), Integer::New(isolate, Sym));
+                        event->Set(String::NewFromUtf8(isolate, "mod"), Integer::New(isolate, (int) Mod));
+                        jsEventArr->Set(evCount++, event);
+                    } else if (e.type == SDL_TEXTINPUT) {
+                        Local<Object> event = Object::New(isolate);
+                        event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_TEXTINPUT));
+                        event->Set(String::NewFromUtf8(isolate, "text"), String::NewFromUtf8(isolate, e.text.text));
+                        jsEventArr->Set(evCount++, event);
+                    } else if (e.type == SDL_TEXTEDITING) {
+                        Local<Object> event = Object::New(isolate);
+                        event->Set(String::NewFromUtf8(isolate, "type"), Integer::New(isolate, SDL_TEXTEDITING));
+                        event->Set(String::NewFromUtf8(isolate, "text"), String::NewFromUtf8(isolate, e.edit.text));
+                        event->Set(String::NewFromUtf8(isolate, "start"), Integer::New(isolate, e.edit.start));
+                        event->Set(String::NewFromUtf8(isolate, "length"), Integer::New(isolate, e.edit.length));
                         jsEventArr->Set(evCount++, event);
                     }
                     
