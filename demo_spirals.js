@@ -10,6 +10,7 @@ windowTitle = "Spiral Demo built with PixelScript";
 function init() {
     print("Init");
     t = 0;
+    pt = Date.now();
 }
 
 function update() {
@@ -28,18 +29,22 @@ function update() {
             r = Math.sqrt(cx*cx + cy*cy);
             phi = Math.atan2(cy, cx);
             
-            red = Math.sin((r+1/(r+0.1))*10-t/5);
+            red = Math.sin((r+1/(r+0.1))*10-t*0.2);
             red = red*red;
-            green = (Math.sin((phi*10)+(Math.sin(r*10)*2)+(t/10))+1)/2;
-            blue = (Math.sin((-phi*20)+(Math.cos(r*10)*2)+(t/10))+1)/2;
+            green = (Math.sin((phi*10)+(Math.sin(r*10)*2)+(t/10))+1)*0.5;
+            blue = (Math.sin((-phi*20)+(Math.cos(r*10)*2)+(t/10))+1)*0.5;
             
-            offset = ((y*screenWidth)+x)*4;
+            offset = ((y*screenWidth)+x)<<2;
             screen[offset]   = (red*255);    // R
             screen[offset+1] = (green*255);  // G
             screen[offset+2] = (blue*255);   // B
             screen[offset+3] = 255;          // A
         }
     }
+    
+    var nt = Date.now();
+    print("Frame MS: "+(nt-pt))
+    pt = nt;
 }
 
 function exit() {

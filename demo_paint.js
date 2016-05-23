@@ -1,3 +1,8 @@
+/* Super minimal paint program
+ * Copyright (c) 2016 Crystalline Emerald
+ * This software is distrbuted under MIT license, see LICENSE for details
+ */
+ 
 
 noClearScreen = true;
 screenWidth = 640;

@@ -19,6 +19,7 @@
 
 #define COMPILE_BLOBS 1
 #define COMPILE_LOGO 1
+#define COMPILE_SDL_CONSTANTS 1
 
 #ifdef COMPILE_BLOBS
 #include "natives_blob.c"
@@ -53,9 +54,13 @@
 
 #define LOG_PREFIX "LOG: "
 
-#define DEBUG 1
+//#define DEBUG 0
 
+#ifdef DEBUG
 #define PRINT_BYTES(ptr, size) printf("bytes: "); for (int i=0; i<size; i++) { printf("%hhx ", ((unsigned char*)ptr)[i]); } puts("");
+#else
+#define PRINT_BYTES(ptr, size)
+#endif
 
 enum EvTypes {
     EV_QUIT, EV_KEY_UP, EV_KEY_DOWN, EV_MOUSE_UP, EV_MOUSE_DOWN, EV_MOUSE_MOVE
@@ -627,20 +632,9 @@ int main(int argc, char* argv[]) {
         ENGINE_API(GLOBAL_WRITEFILE, WriteFileCallback)
         ENGINE_API(GLOBAL_APPENDFILE, AppendFileCallback)
         
-        // Set SDL constants
-        GLOB_INT("SDL_QUIT",SDL_QUIT)
-        GLOB_INT("SDL_MOUSEBUTTONDOWN",SDL_MOUSEBUTTONDOWN)
-        GLOB_INT("SDL_MOUSEBUTTONUP",SDL_MOUSEBUTTONUP)
-        GLOB_INT("SDL_MOUSEMOTION",SDL_MOUSEMOTION)
-        GLOB_INT("SDL_KEYDOWN",SDL_KEYDOWN)
-        GLOB_INT("SDL_KEYUP",SDL_KEYUP)
-        GLOB_INT("SDL_TEXTINPUT",SDL_TEXTINPUT)
-        GLOB_INT("SDL_TEXTEDITING",SDL_TEXTEDITING)
-        GLOB_INT("SDL_BUTTON_LEFT",SDL_BUTTON_LEFT)
-        GLOB_INT("SDL_BUTTON_MIDDLE",SDL_BUTTON_MIDDLE)
-        GLOB_INT("SDL_BUTTON_RIGHT",SDL_BUTTON_RIGHT)
-        GLOB_INT("SDL_BUTTON_X1",SDL_BUTTON_X1)
-        GLOB_INT("SDL_BUTTON_X2",SDL_BUTTON_X2)
+#ifdef COMPILE_SDL_CONSTANTS
+#include "sdl_constants.cc"
+#endif
         
         ExecuteScript(isolate, source);
         
